@@ -29,6 +29,16 @@ public class EmotionEngine {
             return new EmotionResult(currentEmotion, currentIntensity);
         }
 
+        EmotionResult ruleResult = analyzeWithRules(userMessage, currentEmotion, currentIntensity);
+        if (!ruleResult.emotion().equals(currentEmotion)
+                || !ruleResult.emotionIntensity().equals(currentIntensity)) {
+            return ruleResult;
+        }
+
+        return ruleResult;
+    }
+
+    private EmotionResult analyzeWithRules(String userMessage, String currentEmotion, int currentIntensity) {
         String normalizedMessage = userMessage.toLowerCase();
         EmotionRule matchedRule = findMatchedRule(normalizedMessage);
         if (matchedRule == null) {
