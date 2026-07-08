@@ -6,5 +6,5 @@ import org.springframework.context.annotation.Configuration;
 public class JacksonConfig {
 
     // TODO: Configure Jackson serialization/deserialization settings.
-    //
+
 }
