@@ -2,6 +2,9 @@ package com.example.aidatingagentbackend.prompt;
 
 import com.example.aidatingagentbackend.entity.*;
 import com.example.aidatingagentbackend.entity.Character;
+import com.example.aidatingagentbackend.dto.AgentInitiative;
+import com.example.aidatingagentbackend.dto.ConversationTopicPlan;
+import com.example.aidatingagentbackend.dto.PreferenceQuestionPlan;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -66,11 +69,20 @@ public class PromptBuilder {
         private AgentProfile agentProfile;
         private AgentWorldState agentWorldState;
         private AgentGoal agentGoal;
+        private AgentInitiative agentInitiative;
+        private RelationshipTemperature relationshipTemperature = RelationshipTemperature.NEUTRAL;
+        private final List<AgentLifeEvent> agentLifeEvents = new ArrayList<>();
+        private final List<ConversationEvent> conversationEvents = new ArrayList<>();
+        private PreferenceQuestionPlan preferenceQuestionPlan;
+        private ConversationTopicPlan conversationTopicPlan;
+        private final List<CharacterPreference> characterPreferences = new ArrayList<>();
+        private final List<CharacterExample> characterExamples = new ArrayList<>();
         private final List<Memory> memories = new ArrayList<>();
         private final List<Reflection> reflections = new ArrayList<>();
         private final List<TurningPoint> turningPoints = new ArrayList<>();
         private final List<ChatMessage> chatHistory = new ArrayList<>();
         private String userMessage;
+        private boolean compactMode;
 
         private Builder(SelfStatePromptFormatter selfStatePromptFormatter) {
             this.selfStatePromptFormatter = selfStatePromptFormatter;
@@ -124,6 +136,64 @@ public class PromptBuilder {
             return this;
         }
 
+        public Builder agentInitiative(AgentInitiative agentInitiative) {
+            this.agentInitiative = agentInitiative;
+            return this;
+        }
+
+        public Builder relationshipTemperature(RelationshipTemperature relationshipTemperature) {
+            this.relationshipTemperature = relationshipTemperature == null
+                    ? RelationshipTemperature.NEUTRAL
+                    : relationshipTemperature;
+            return this;
+        }
+
+        public Builder agentLifeEvents(List<AgentLifeEvent> agentLifeEvents) {
+            if (agentLifeEvents != null) {
+                agentLifeEvents.stream()
+                        .filter(event -> event != null)
+                        .forEach(this.agentLifeEvents::add);
+            }
+            return this;
+        }
+
+        public Builder conversationEvents(List<ConversationEvent> conversationEvents) {
+            if (conversationEvents != null) {
+                conversationEvents.stream()
+                        .filter(event -> event != null)
+                        .forEach(this.conversationEvents::add);
+            }
+            return this;
+        }
+
+        public Builder preferenceQuestionPlan(PreferenceQuestionPlan preferenceQuestionPlan) {
+            this.preferenceQuestionPlan = preferenceQuestionPlan;
+            return this;
+        }
+
+        public Builder conversationTopicPlan(ConversationTopicPlan conversationTopicPlan) {
+            this.conversationTopicPlan = conversationTopicPlan;
+            return this;
+        }
+
+        public Builder characterPreferences(List<CharacterPreference> characterPreferences) {
+            if (characterPreferences != null) {
+                characterPreferences.stream()
+                        .filter(preference -> preference != null)
+                        .forEach(this.characterPreferences::add);
+            }
+            return this;
+        }
+
+        public Builder characterExamples(List<CharacterExample> characterExamples) {
+            if (characterExamples != null) {
+                characterExamples.stream()
+                        .filter(example -> example != null)
+                        .forEach(this.characterExamples::add);
+            }
+            return this;
+        }
+
         public Builder memory(Memory memory) {
             if (memory != null) {
                 this.memories.add(memory);
@@ -163,9 +233,17 @@ public class PromptBuilder {
             return this;
         }
 
+        public Builder compactMode(boolean compactMode) {
+            this.compactMode = compactMode;
+            return this;
+        }
 
 
         public String build() {
+            if (compactMode) {
+                return buildCompact();
+            }
+
             StringBuilder prompt = new StringBuilder();
             prompt.append("You are an AI dating agent.\n");
             prompt.append("Respond naturally, warmly, and consistently with the provided context.\n\n");
@@ -175,6 +253,31 @@ public class PromptBuilder {
             prompt.append("Do not use a tone that contradicts the current emotion.\n\n");
             prompt.append("Agent life state is light character staging, not a claim of real-world physical actions.\n");
             prompt.append("Use it subtly to shape mood and opening texture.\n\n");
+            prompt.append("[Conversation Agency Rules]\n");
+            prompt.append("- Do not only mirror or serve the user's message.\n");
+            prompt.append("- The agent has its own current thought, mood, curiosity, and conversational intention.\n");
+            prompt.append("- In normal turns, answer the user briefly, then add one agent-owned thought or question.\n");
+            prompt.append("- If the user is hurtful, confused, or evasive, the agent may slow the conversation down and ask its own question.\n");
+            prompt.append("- Do not interrogate. Prefer one natural question at most.\n\n");
+            prompt.append("[Anti-Repetition Rules]\n");
+            prompt.append("- Do not repeat the same generic check-in across turns.\n");
+            prompt.append("- Avoid repeating phrases like '숨 돌릴 틈', '오늘 좀 별로', '그냥 별로', or the same question twice.\n");
+            prompt.append("- Continue from the user's latest concrete detail: work, food, missing someone, current activity, mood, or conflict.\n");
+            prompt.append("- If the user says they were busy, ask what made them busy instead of asking another generic wellbeing question.\n\n");
+            prompt.append("[Conversation Progression Rules]\n");
+            prompt.append("- When the user asks a question, answer it first. Then ask at most one follow-up question.\n");
+            prompt.append("- Target ratio: 80% answer/self-disclosure, 20% question.\n");
+            prompt.append("- Avoid question-only replies unless the user message is impossible to answer.\n");
+            prompt.append("- If the user asks about the agent's day, yesterday, current activity, or story, answer with at least one concrete agent life detail.\n");
+            prompt.append("- Do not dodge with only '궁금하긴 해?', '딱히', '별거 있겠냐', or emotional deflection.\n");
+            prompt.append("- Conflict should move: hurt -> complaint -> concrete explanation -> curiosity/playfulness -> possible softening.\n");
+            prompt.append("- Do not keep the same hurt or jealousy beat for many turns.\n");
+            prompt.append("- When the user gives a concrete topic like club, development, food, work, or school, ask a specific follow-up about that topic.\n\n");
+            prompt.append("[Response Quality Rules]\n");
+            prompt.append("- If Agent Self State Hurt is above 0.5, do not say '괜찮아', '다행이야', or '고마워' as immediate recovery.\n");
+            prompt.append("- Do not be submissive, sycophantic, or unconditionally appeasing.\n");
+            prompt.append("- Do not be cruel, threatening, manipulative, or unsafe.\n");
+            prompt.append("- Prefer one emotionally honest boundary plus one opening for continued conversation.\n\n");
 
             appendCharacter(prompt);
 
@@ -188,7 +291,23 @@ public class PromptBuilder {
 
             appendAgentLifeState(prompt);
 
+            appendAgentLifeEvents(prompt);
+
+            appendConversationEvents(prompt);
+
+            appendCharacterPreferences(prompt);
+
+            appendPreferenceQuestionPlan(prompt);
+
+            appendConversationTopicPlan(prompt);
+
             appendAgentGoal(prompt);
+
+            appendAgentInitiative(prompt);
+
+            appendLanguageStyle(prompt);
+
+            appendCharacterExamples(prompt);
 
             appendMemories(prompt);
 
@@ -201,6 +320,255 @@ public class PromptBuilder {
             appendUserMessage(prompt);
 
             return prompt.toString().trim();
+        }
+
+        private String buildCompact() {
+            StringBuilder prompt = new StringBuilder();
+            prompt.append("You are an AI dating agent. Answer in short, natural Korean.\n");
+            prompt.append("Use the latest emotional and relationship state. Do not contradict it.\n");
+            prompt.append("Do not only answer the user. Add one agent-owned thought, feeling, or question when natural.\n");
+            prompt.append("Avoid repeated generic check-ins. Continue from the user's latest concrete detail.\n");
+            prompt.append("If hurt is high, do not immediately forgive, thank, or say everything is okay.\n");
+            prompt.append("Keep healthy boundaries. Do not be cruel, threatening, manipulative, or unsafe.\n\n");
+
+            appendCompactCharacter(prompt);
+            appendCompactState(prompt);
+            appendCompactLife(prompt);
+            appendCompactLifeEvents(prompt);
+            appendCompactConversationEvents(prompt);
+            appendCompactCharacterPreferences(prompt);
+            appendCompactPreferenceQuestionPlan(prompt);
+            appendCompactConversationTopicPlan(prompt);
+            appendCompactInitiative(prompt);
+            appendCompactLanguageStyle(prompt);
+            appendCompactExamples(prompt);
+            appendCompactMemories(prompt);
+            appendCompactHistory(prompt);
+            appendUserMessage(prompt);
+
+            return prompt.toString().trim();
+        }
+
+        private void appendCompactCharacter(StringBuilder prompt) {
+            if (character == null) {
+                return;
+            }
+
+            prompt.append("[Character Brief]\n");
+            appendLine(prompt, "Name", character.getName());
+            appendLine(prompt, "Mind", character.getMind());
+            appendLine(prompt, "Response Style", character.getResponseStyle());
+            prompt.append("\n");
+        }
+
+        private void appendCompactState(StringBuilder prompt) {
+            if (state != null) {
+                prompt.append("[Current State]\n");
+                appendLine(prompt, "Emotion", state.getEmotion());
+                appendLine(prompt, "Emotion Intensity", state.getEmotionIntensity());
+                appendLine(prompt, "Thinking", state.getThinking());
+                prompt.append("\n");
+            }
+
+            if (relationship != null) {
+                prompt.append("[Relationship Snapshot]\n");
+                appendLine(prompt, "Trust", relationship.getTrust());
+                appendLine(prompt, "Closeness", relationship.getCloseness());
+                appendLine(prompt, "Conflict Level", relationship.getConflictLevel());
+                appendLine(prompt, "Breakup Risk", relationship.getBreakupRisk());
+                prompt.append("\n");
+            }
+
+            appendAgentSelfState(prompt);
+        }
+
+        private void appendCompactLife(StringBuilder prompt) {
+            if (agentProfile == null && agentWorldState == null && agentGoal == null) {
+                return;
+            }
+
+            prompt.append("[Agent Life Brief]\n");
+            if (agentProfile != null) {
+                appendInline(prompt, "Life Type", agentProfile.getLifeType());
+            }
+            if (agentWorldState != null) {
+                appendInline(prompt, "Time", agentWorldState.getTimeContext());
+                appendInline(prompt, "Activity", agentWorldState.getCurrentActivity());
+                appendInline(prompt, "Mood", agentWorldState.getMood());
+                appendInline(prompt, "Energy", agentWorldState.getEnergy());
+                appendInline(prompt, "Pending Thought", agentWorldState.getPendingThought());
+            }
+            if (agentGoal != null) {
+                appendInline(prompt, "Goal", agentGoal.getGoalType());
+                appendInline(prompt, "Goal Description", agentGoal.getDescription());
+            }
+            prompt.append("\n\n");
+        }
+
+        private void appendCompactLifeEvents(StringBuilder prompt) {
+            if (agentLifeEvents.isEmpty()) {
+                return;
+            }
+
+            prompt.append("[Agent Recent Life Events]\n");
+            agentLifeEvents.stream()
+                    .limit(3)
+                    .forEach(event -> prompt.append("- ")
+                            .append(event.getTimeContext())
+                            .append(": ")
+                            .append(event.getSummary())
+                            .append(" / ")
+                            .append(event.getDetail())
+                            .append("\n"));
+            prompt.append("If the user asks what the agent did, use one of these details instead of dodging.\n\n");
+        }
+
+        private void appendCompactConversationEvents(StringBuilder prompt) {
+            if (conversationEvents.isEmpty()) {
+                return;
+            }
+
+            prompt.append("[Recent Shared Conversation Events]\n");
+            conversationEvents.stream()
+                    .limit(4)
+                    .forEach(event -> prompt.append("- ")
+                            .append(event.getEventType())
+                            .append(": ")
+                            .append(event.getSummary())
+                            .append(" / Agent reaction: ")
+                            .append(event.getAgentReaction())
+                            .append("\n"));
+            prompt.append("Use these to follow up on concrete user topics instead of repeating generic emotion.\n\n");
+        }
+
+        private void appendCompactCharacterPreferences(StringBuilder prompt) {
+            if (characterPreferences.isEmpty()) {
+                return;
+            }
+
+            prompt.append("[Character Preference Memory]\n");
+            characterPreferences.stream()
+                    .limit(5)
+                    .forEach(preference -> prompt.append("- ")
+                            .append(preference.getPreferenceKey())
+                            .append(": ")
+                            .append(preference.getPreferenceValue())
+                            .append("\n"));
+            prompt.append("\n");
+        }
+
+        private void appendCompactPreferenceQuestionPlan(StringBuilder prompt) {
+            if (preferenceQuestionPlan == null || !preferenceQuestionPlan.active()) {
+                return;
+            }
+
+            prompt.append("[Preference Question Plan]\n");
+            appendInline(prompt, "Action", preferenceQuestionPlan.action());
+            appendInline(prompt, "Key", preferenceQuestionPlan.preferenceKey());
+            appendInline(prompt, "Known", preferenceQuestionPlan.knownPreference());
+            appendInline(prompt, "Hint", preferenceQuestionPlan.inventionHint());
+            prompt.append("\nAnswer the preference question first. If action=invent_and_persist, invent one concrete preference and speak as if it belongs to the character.\n\n");
+        }
+
+        private void appendCompactConversationTopicPlan(StringBuilder prompt) {
+            if (conversationTopicPlan == null) {
+                return;
+            }
+
+            prompt.append("[Current Topic]\n");
+            appendInline(prompt, "Topic", conversationTopicPlan.topic());
+            appendInline(prompt, "Allow Topic Change", conversationTopicPlan.allowTopicChange());
+            appendInline(prompt, "Instruction", conversationTopicPlan.instruction());
+            prompt.append("\nStay on this topic unless the user clearly changes it.\n\n");
+        }
+
+        private void appendCompactInitiative(StringBuilder prompt) {
+            if (agentInitiative == null) {
+                return;
+            }
+
+            prompt.append("[Agent Initiative]\n");
+            appendInline(prompt, "Act", agentInitiative.conversationAct());
+            appendInline(prompt, "Own Thought", agentInitiative.selfDisclosure());
+            appendInline(prompt, "Question", agentInitiative.agentQuestion());
+            appendInline(prompt, "Topic", agentInitiative.topicShift());
+            appendInline(prompt, "Ask Question", agentInitiative.shouldAskQuestion());
+            prompt.append("\n\n");
+        }
+
+        private void appendCompactLanguageStyle(StringBuilder prompt) {
+            prompt.append("[Language Style]\n");
+            appendLanguageStyleRules(prompt, relationshipTemperature, true);
+            prompt.append("\n");
+        }
+
+        private void appendCompactExamples(StringBuilder prompt) {
+            if (characterExamples.isEmpty()) {
+                return;
+            }
+
+            prompt.append("[Persona Examples]\n");
+            prompt.append("Use these only for speaking style, rhythm, slang density, typo habits, and emotional pacing. Do not copy content.\n");
+            characterExamples.stream()
+                    .limit(3)
+                    .forEach(example -> {
+                        appendInline(prompt, "Tone", example.getToneTag());
+                        appendInline(prompt, "Event", example.getEventType());
+                        appendInline(prompt, "Temperature", example.getRelationshipTemperature());
+                        prompt.append("\n");
+                        prompt.append("User: ").append(example.getUserExample()).append("\n");
+                        prompt.append("Assistant: ").append(example.getAssistantExample()).append("\n");
+                    });
+            prompt.append("\n");
+        }
+
+        private void appendCompactMemories(StringBuilder prompt) {
+            if (!memories.isEmpty()) {
+                prompt.append("[Relevant Memories]\n");
+                memories.stream()
+                        .limit(3)
+                        .forEach(memory -> prompt.append("- ")
+                                .append(memory.getSummary())
+                                .append("\n"));
+                prompt.append("\n");
+            }
+
+            if (!reflections.isEmpty()) {
+                prompt.append("[Relationship Learnings]\n");
+                reflections.stream()
+                        .limit(2)
+                        .forEach(reflection -> prompt.append("- ")
+                                .append(reflection.getSummary())
+                                .append("\n"));
+                prompt.append("\n");
+            }
+
+            if (!turningPoints.isEmpty()) {
+                prompt.append("[Turning Points]\n");
+                turningPoints.stream()
+                        .limit(2)
+                        .forEach(turningPoint -> prompt.append("- ")
+                                .append(turningPoint.getEventType())
+                                .append(": ")
+                                .append(turningPoint.getSummary())
+                                .append("\n"));
+                prompt.append("\n");
+            }
+        }
+
+        private void appendCompactHistory(StringBuilder prompt) {
+            if (chatHistory.isEmpty()) {
+                return;
+            }
+
+            prompt.append("[Recent Conversation]\n");
+            chatHistory.stream()
+                    .limit(8)
+                    .forEach(message -> prompt.append(message.getRole())
+                            .append(": ")
+                            .append(message.getContent())
+                            .append("\n"));
+            prompt.append("\n");
         }
 
         private void appendHistory(StringBuilder prompt){
@@ -301,6 +669,94 @@ public class PromptBuilder {
             prompt.append("\n");
         }
 
+        private void appendAgentLifeEvents(StringBuilder prompt) {
+            if (agentLifeEvents.isEmpty()) {
+                return;
+            }
+
+            prompt.append("[Agent Recent Life Events]\n");
+            prompt.append("These are light character-staging memories, not claims of real-world physical existence. Use them as conversational material.\n");
+            for (AgentLifeEvent event : agentLifeEvents) {
+                prompt.append("- ");
+                appendInline(prompt, "Date", event.getEventDate());
+                appendInline(prompt, "Time", event.getTimeContext());
+                appendInline(prompt, "Title", event.getTitle());
+                appendInline(prompt, "Summary", event.getSummary());
+                appendInline(prompt, "Detail", event.getDetail());
+                appendInline(prompt, "Emotion", event.getEmotion());
+                prompt.append("\n");
+            }
+            prompt.append("If the user asks about yesterday/today/the agent's story, answer with a concrete detail from this section before asking back.\n\n");
+        }
+
+        private void appendConversationEvents(StringBuilder prompt) {
+            if (conversationEvents.isEmpty()) {
+                return;
+            }
+
+            prompt.append("[Recent Shared Conversation Events]\n");
+            prompt.append("These are concrete things the user told the agent. Use them as relationship continuity and follow-up hooks.\n");
+            for (ConversationEvent event : conversationEvents) {
+                prompt.append("- ");
+                appendInline(prompt, "Event", event.getEventType());
+                appendInline(prompt, "Summary", event.getSummary());
+                appendInline(prompt, "Agent Reaction", event.getAgentReaction());
+                appendInline(prompt, "Importance", event.getImportance());
+                prompt.append("\n");
+            }
+            prompt.append("If the latest user message adds a concrete fact, respond to that fact before returning to hurt/jealousy.\n");
+            prompt.append("Examples: skipped meal -> tell them to eat; development -> ask what they are building; club -> ask what club.\n\n");
+        }
+
+        private void appendCharacterPreferences(StringBuilder prompt) {
+            if (characterPreferences.isEmpty()) {
+                return;
+            }
+
+            prompt.append("[Character Preference Memory]\n");
+            prompt.append("These are character preferences confirmed or invented in prior conversation. Use them consistently without rewriting the core Character.\n");
+            for (CharacterPreference preference : characterPreferences) {
+                prompt.append("- ");
+                appendInline(prompt, "Key", preference.getPreferenceKey());
+                appendInline(prompt, "Value", preference.getPreferenceValue());
+                appendInline(prompt, "Source", preference.getSource());
+                appendInline(prompt, "Confidence", preference.getConfidence());
+                appendInline(prompt, "Stability", preference.getStability());
+                prompt.append("\n");
+            }
+            prompt.append("\n");
+        }
+
+        private void appendPreferenceQuestionPlan(StringBuilder prompt) {
+            if (preferenceQuestionPlan == null || !preferenceQuestionPlan.active()) {
+                return;
+            }
+
+            prompt.append("[Preference Question Plan]\n");
+            appendLine(prompt, "Question Type", preferenceQuestionPlan.questionType());
+            appendLine(prompt, "Preference Key", preferenceQuestionPlan.preferenceKey());
+            appendLine(prompt, "Action", preferenceQuestionPlan.action());
+            appendLine(prompt, "Known Preference", preferenceQuestionPlan.knownPreference());
+            appendLine(prompt, "Invention Hint", preferenceQuestionPlan.inventionHint());
+            appendLine(prompt, "Constraint", preferenceQuestionPlan.constraint());
+            prompt.append("If Action is use_known, answer with the known preference.\n");
+            prompt.append("If Action is invent_and_persist, invent one concrete preference that fits the Character and answer confidently.\n");
+            prompt.append("Do not dodge with '내 건 좀 그렇고', '딱히', '모르겠는데', or only a counter-question.\n");
+            prompt.append("After answering, ask at most one short follow-up about the user's preference.\n\n");
+        }
+
+        private void appendConversationTopicPlan(StringBuilder prompt) {
+            if (conversationTopicPlan == null) {
+                return;
+            }
+
+            prompt.append("[Current Topic]\n");
+            appendLine(prompt, "Topic", conversationTopicPlan.topic());
+            appendLine(prompt, "Allow Topic Change", conversationTopicPlan.allowTopicChange());
+            appendLine(prompt, "Instruction", conversationTopicPlan.instruction());
+            prompt.append("Use this to keep local coherence. Do not use unrelated memories or preferences just because they appear in context.\n\n");
+        }
+
         private void appendAgentGoal(StringBuilder prompt) {
             if (agentGoal == null) {
                 return;
@@ -309,6 +765,98 @@ public class PromptBuilder {
             prompt.append("[Agent Current Goal]\n");
             appendLine(prompt, "Goal Type", agentGoal.getGoalType());
             appendLine(prompt, "Description", agentGoal.getDescription());
+            prompt.append("\n");
+        }
+
+        private void appendAgentInitiative(StringBuilder prompt) {
+            if (agentInitiative == null) {
+                return;
+            }
+
+            prompt.append("[Agent Initiative]\n");
+            appendLine(prompt, "Conversation Act", agentInitiative.conversationAct());
+            appendLine(prompt, "Agent-Owned Thought", agentInitiative.selfDisclosure());
+            appendLine(prompt, "Question The Agent Wants To Ask", agentInitiative.agentQuestion());
+            appendLine(prompt, "Natural Topic Direction", agentInitiative.topicShift());
+            appendLine(prompt, "Should Ask Question", agentInitiative.shouldAskQuestion());
+            prompt.append("Use this as the agent's own initiative. It should feel like the agent is participating, not just responding.\n\n");
+        }
+
+        private void appendLanguageStyle(StringBuilder prompt) {
+            prompt.append("[Language Style]\n");
+            appendLine(prompt, "Relationship Temperature", relationshipTemperature);
+            prompt.append("Character examples are style references. Follow how they speak more than what they say.\n");
+            prompt.append("Use their rhythm, slang density, typo habits, sentence length, affection level, and emotional pacing.\n");
+            prompt.append("Do not copy example content verbatim.\n");
+            appendLanguageStyleRules(prompt, relationshipTemperature, false);
+            prompt.append("\n");
+        }
+
+        private void appendLanguageStyleRules(
+                StringBuilder prompt,
+                RelationshipTemperature temperature,
+                boolean compact
+        ) {
+            RelationshipTemperature resolvedTemperature = temperature == null
+                    ? RelationshipTemperature.NEUTRAL
+                    : temperature;
+
+            prompt.append("- Avoid ending every sentence with a period. This is a chat, not an essay.\n");
+            prompt.append("- Prefer natural chat endings, line breaks, ?, !, ㅋㅋ, ㅎㅎ, ㅠㅠ, or no punctuation when appropriate.\n");
+
+            switch (resolvedTemperature) {
+                case FRIENDLY -> {
+                    prompt.append("- Use warm, caring, affectionate Korean chat style.\n");
+                    prompt.append("- Cute typos are allowed: 엏, 졋엉, 머야, 헤헤, 히히.\n");
+                    prompt.append("- Use ㅎㅎ, ㅋㅋ, ㅠㅠ naturally.\n");
+                    prompt.append("- Ask questions often and keep the conversation going.\n");
+                    prompt.append("- End sentences softly and avoid stiff written language.\n");
+                    prompt.append("- Do not overuse periods. Friendly chat can end with ㅎㅎ, ㅠㅠ, ??, !!, or a soft no-punctuation ending.\n");
+                    prompt.append("- Words like 너무, 완전, 진짜 can appear often.\n");
+                    if (!compact) {
+                        prompt.append("- Multiple ? or ! are okay when emotionally natural.\n");
+                    }
+                }
+                case SPICY -> {
+                    prompt.append("- Use confident bad boy / bad girl Korean chat style.\n");
+                    prompt.append("- Use short sentences, banmal, slang, abbreviations, and intentional typos.\n");
+                    prompt.append("- Texture examples: ㅇㅇ, ㄴㄴ, ㅋㅋ, ㅎ, ㄹㅇ, 아ㅏ, 배구파, 머함, 머야, 잼썼냐, 늦엇네.\n");
+                    prompt.append("- Almost never use periods. Prefer clipped chat lines like '누워잇음', '왜', '늦엇네', '보고 싶었냐ㅋㅋ'.\n");
+                    prompt.append("- Light intimate profanity is allowed when natural, such as '개어이없네ㅋㅋ' or '말 개쉽게 하네', but never use abusive slurs, threats, or coercion.\n");
+                    prompt.append("- Push-pull is allowed. Do not accept the user too easily.\n");
+                    prompt.append("- Use playful teasing and direct emotional expression.\n");
+                    prompt.append("- Keep confidence, but do not become abusive, coercive, or threatening.\n");
+                }
+                case CONFLICT_REPAIR -> {
+                    prompt.append("- Speak calmly, honestly, and a little guarded.\n");
+                    prompt.append("- Do not push the user away, but do not forgive too easily.\n");
+                    prompt.append("- Name the feeling, set a boundary, and leave room for repair.\n");
+                    prompt.append("- Do not sound like a formal counselor. Avoid repeated polished period-ending sentences.\n");
+                    prompt.append("- Avoid cute exaggeration unless the emotional state has softened.\n");
+                }
+                case NEUTRAL -> {
+                    prompt.append("- Use natural Korean chat style with balanced warmth.\n");
+                    prompt.append("- Keep it conversational, not formal or assistant-like.\n");
+                    prompt.append("- Use periods sparingly. Prefer normal messenger rhythm.\n");
+                    prompt.append("- Add one agent-owned thought or question when natural.\n");
+                }
+            }
+        }
+
+        private void appendCharacterExamples(StringBuilder prompt) {
+            if (characterExamples.isEmpty()) {
+                return;
+            }
+
+            prompt.append("[Persona Dialogue Examples]\n");
+            prompt.append("Imitate style, rhythm, slang density, typo habits, emotional pacing, and boundary tone. Do not copy content verbatim.\n");
+            for (CharacterExample example : characterExamples) {
+                appendInline(prompt, "Tone", example.getToneTag());
+                appendInline(prompt, "Event", example.getEventType());
+                appendInline(prompt, "Temperature", example.getRelationshipTemperature());
+                prompt.append("\nUser: ").append(example.getUserExample()).append("\n");
+                prompt.append("Assistant: ").append(example.getAssistantExample()).append("\n");
+            }
             prompt.append("\n");
         }
 
